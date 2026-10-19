@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+sim_build/
+results.xml
+*.vcd
+sim/fifo_compile
+sim/fifo_sim
