@@ -41,6 +41,14 @@ def check_flags(dut, model, step):
 
 @cocotb.test()
 async def test_fifo_stress(dut):
+    coverage = {
+        "reset": 0,
+        "empty_operation": 0,
+        "full_operation": 0,
+        "simultaneous_read_write": 0,
+        "pointer_wraparound": 0,
+        "random_cycles": 0,
+    }
     """检查复位、边界条件、指针回绕和随机读写。"""
 
     dut.clk.value = 0
@@ -58,6 +66,7 @@ async def test_fifo_stress(dut):
     assert int(dut.empty.value) == 1, "Reset should set empty"
     assert int(dut.full.value) == 0, "Reset should clear full"
     assert int(dut.dout.value) == 0, "Reset should clear dout"
+    coverage["reset"] += 1
 
     model = []
 
@@ -69,6 +78,8 @@ async def test_fifo_stress(dut):
     await cycle(dut, wr_en=1, rd_en=1, din=0xA1)
     model.append(0xA1)
     check_flags(dut, model, "empty simultaneous read/write")
+    coverage["empty_operation"] += 1
+    coverage["simultaneous_read_write"] += 1
 
     # 3. 读出刚才写入的数据
     await cycle(dut, rd_en=1)
@@ -89,11 +100,13 @@ async def test_fifo_stress(dut):
         check_flags(dut, model, f"fill {i}")
 
     assert int(dut.full.value) == 1, "FIFO should be full"
+    coverage["full_operation"] += 1
 
     # 5. 满状态下同时读写
     # RTL 的 !full 条件会拒绝写入，但 !empty 允许读取。
     expected = model.pop(0)
     await cycle(dut, wr_en=1, rd_en=1, din=0xEE)
+    coverage["simultaneous_read_write"] += 1
 
     actual = int(dut.dout.value)
     assert actual == expected, (
@@ -138,6 +151,7 @@ async def test_fifo_stress(dut):
             )
 
             check_flags(dut, model, f"wrap drain round {round_id}")
+    coverage["pointer_wraparound"] += 1
 
     # 8. 随机读写压力测试
     rng = random.Random(20261019)
@@ -169,7 +183,7 @@ async def test_fifo_stress(dut):
             model.append(din)
 
         check_flags(dut, model, f"random step {step}")
-
+        coverage["random_cycles"] += 1
     # 9. 最后排空，验证所有剩余数据
     while model:
         expected = model.pop(0)
@@ -188,4 +202,6 @@ async def test_fifo_stress(dut):
         "PASS: reset, empty/full boundaries, simultaneous operations, "
         "pointer wraparound, and 2000 randomized cycles"
     )
-
+    dut._log.info("Functional coverage summary:")
+    for name, count in coverage.items():
+        dut._log.info(f"  {name}: {count}")
